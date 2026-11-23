@@ -1,3 +1,8 @@
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.InputMismatchException;
@@ -7,20 +12,53 @@ import java.util.Scanner;
 public class SaccoManager {
     private static final HashMap<String, Member> membersDb = new HashMap<>();
     private static final HashSet<String> registeredNationalIds = new HashSet<>();
+    private static final String MEMBERS_FILE = "members.csv";
+    private static final String TRANSACTIONS_FILE = "transactions.txt";
 
     public static void main(String[] args) {
-        // Phase 2 Verification Harness (Menu loop added in Phase 3)
-        System.out.println("=== Phase 2 Engine Test ===");
-        Member m1 = new Member("M-001", "Brian Otieno", "38112233");
-        membersDb.put(m1.getMemberId(), m1);
-        registeredNationalIds.add(m1.getNationalId());
+        Scanner scanner = new Scanner(System.in);
 
-        m1.addAccount("Savings", new SavingsAccount("M-001-1010", 10000));
-        m1.addAccount("Loan", new LoanAccount("M-001-2020", 5000));
+        // Load persisted member & account records on startup
+        loadDataFromFile();
 
-        printMemberSummary(m1);
-        System.out.println("Duplicate National ID check (38112233): "
-                + registeredNationalIds.contains("38112233"));
+        int choice;
+        do {
+            System.out.println("\n=== M-KOPO SACCO MANAGEMENT SYSTEM ===");
+            System.out.println("1. Register New Member");
+            System.out.println("2. Open an Account");
+            System.out.println("3. Deposit Money");
+            System.out.println("4. Withdraw Money");
+            System.out.println("5. View Member Details");
+            System.out.println("6. Exit & Save");
+
+            choice = readInt(scanner, "Enter choice (1-6): ");
+
+            switch (choice) {
+                case 1:
+                    registerMember(scanner);
+                    break;
+                case 2:
+                    openAccount(scanner);
+                    break;
+                case 3:
+                    depositMoney(scanner);
+                    break;
+                case 4:
+                    withdrawMoney(scanner);
+                    break;
+                case 5:
+                    viewMemberDetails(scanner);
+                    break;
+                case 6:
+                    saveDataToFile();
+                    System.out.println("Exiting M-Kopo SACCO System. Goodbye!");
+                    break;
+                default:
+                    System.out.println("Invalid choice. Please select an option between 1 and 6.");
+            }
+        } while (choice != 6);
+
+        scanner.close();
     }
 
     // --- Core Business Methods ---
@@ -59,6 +97,7 @@ public class SaccoManager {
         Member newMember = new Member(id, name, nationalId);
         membersDb.put(id, newMember);
         registeredNationalIds.add(nationalId);
+        logSystemEvent("NEW MEMBER REGISTERED | ID: " + id + " | Name: " + name);
         System.out.println("Success: Member " + name + " (" + id + ") registered.");
     }
 
@@ -97,6 +136,7 @@ public class SaccoManager {
                 : new LoanAccount(accountNumber, 0.0);
 
         member.addAccount(accType, account);
+        logSystemEvent("ACCOUNT OPENED | Member: " + id + " | Type: " + accType + " | AccNo: " + accountNumber);
         System.out.println("Success: " + accType + " Account (" + accountNumber + ") opened.");
     }
 
@@ -132,6 +172,81 @@ public class SaccoManager {
             return;
         }
         printMemberSummary(member);
+    }
+
+    // --- File I/O Methods ---
+
+    private static void loadDataFromFile() {
+        File file = new File(MEMBERS_FILE);
+        if (!file.exists()) {
+            System.out.println("No existing " + MEMBERS_FILE + " found. Starting fresh.");
+            return;
+        }
+
+        try (Scanner fileScanner = new Scanner(file)) {
+            while (fileScanner.hasNextLine()) {
+                String line = fileScanner.nextLine().trim();
+                if (line.isEmpty()) continue;
+
+                // CSV Format: MemberId,Name,NationalId,AccountType,AccountNumber,Balance
+                String[] parts = line.split(",");
+                if (parts.length == 6) {
+                    String memberId = parts[0];
+                    String name = parts[1];
+                    String nationalId = parts[2];
+                    String accType = parts[3];
+                    String accNumber = parts[4];
+                    double balance = Double.parseDouble(parts[5]);
+
+                    Member member = membersDb.getOrDefault(memberId, new Member(memberId, name, nationalId));
+                    membersDb.put(memberId, member);
+                    registeredNationalIds.add(nationalId);
+
+                    if (!accType.equals("NONE")) {
+                        Account account = accType.equals("Savings")
+                                ? new SavingsAccount(accNumber, balance)
+                                : new LoanAccount(accNumber, balance);
+                        member.addAccount(accType, account);
+                    }
+                }
+            }
+            System.out.println("Loaded " + membersDb.size() + " member(s) from " + MEMBERS_FILE + ".");
+        } catch (FileNotFoundException | NumberFormatException e) {
+            System.out.println("Error loading data: " + e.getMessage());
+        }
+    }
+
+    private static void saveDataToFile() {
+        try (PrintWriter pw = new PrintWriter(new FileWriter(MEMBERS_FILE))) {
+            for (Member member : membersDb.values()) {
+                if (member.getAccounts().isEmpty()) {
+                    pw.println(member.getMemberId() + "," + member.getName() + ","
+                            + member.getNationalId() + ",NONE,NONE,0.0");
+                } else {
+                    for (Map.Entry<String, Account> entry : member.getAccounts().entrySet()) {
+                        Account acc = entry.getValue();
+                        pw.println(member.getMemberId() + ","
+                                + member.getName() + ","
+                                + member.getNationalId() + ","
+                                + entry.getKey() + ","
+                                + acc.getAccountNumber() + ","
+                                + acc.getBalance());
+                    }
+                }
+            }
+            System.out.println("Data saved successfully to " + MEMBERS_FILE + ".");
+        } catch (IOException e) {
+            System.out.println("Error saving data: " + e.getMessage());
+        }
+    }
+
+    private static void logSystemEvent(String message) {
+        try (FileWriter fw = new FileWriter(TRANSACTIONS_FILE, true);
+             PrintWriter pw = new PrintWriter(fw)) {
+            pw.println("SYSTEM | " + message);
+        } catch (IOException e) {
+            System.out.println("Error logging system event: " + e.getMessage());
+        }
     }
 
     // --- Helper Methods ---
@@ -182,11 +297,11 @@ public class SaccoManager {
             System.out.print(prompt);
             try {
                 int value = scanner.nextInt();
-                scanner.nextLine(); // consume trailing newline
+                scanner.nextLine();
                 return value;
             } catch (InputMismatchException e) {
                 System.out.println("Invalid input. Please enter a whole number.");
-                scanner.nextLine(); // clear invalid token
+                scanner.nextLine();
             }
         }
     }
@@ -196,11 +311,11 @@ public class SaccoManager {
             System.out.print(prompt);
             try {
                 double value = scanner.nextDouble();
-                scanner.nextLine(); // consume trailing newline
+                scanner.nextLine();
                 return value;
             } catch (InputMismatchException e) {
                 System.out.println("Invalid input. Please enter a numeric amount.");
-                scanner.nextLine(); // clear invalid token
+                scanner.nextLine();
             }
         }
     }

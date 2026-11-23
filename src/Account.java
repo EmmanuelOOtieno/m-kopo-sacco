@@ -1,3 +1,6 @@
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 
 public abstract class Account implements Auditable {
@@ -48,7 +51,11 @@ public abstract class Account implements Auditable {
 
     @Override
     public void logTransaction(String message) {
-        // Temporary console audit before Phase 4 File I/O
-        System.out.println("[AUDIT] " + accountNumber + " | " + message);
+        try (FileWriter fw = new FileWriter("transactions.txt", true);
+             PrintWriter pw = new PrintWriter(fw)) {
+            pw.println(accountNumber + " | " + message);
+        } catch (IOException e) {
+            System.out.println("Error writing to transactions.txt: " + e.getMessage());
+        }
     }
 }
